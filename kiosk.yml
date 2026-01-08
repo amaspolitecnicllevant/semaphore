@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk
+- name: Configurar Google Chrome en modo Kiosk (headless con Xvfb)
   hosts: all
   become: true
   gather_facts: true
@@ -7,7 +7,7 @@
   vars:
     kiosk_user: kioskuser
     kiosk_url: "https://isard.politecnicllevant.cat/login"
-    display: ":0"
+    display: ":99"
     chrome_path: "/usr/bin/google-chrome"
     chrome_flags: "--kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --incognito"
 
@@ -20,14 +20,15 @@
         create_home: yes
         shell: /bin/bash
 
-    - name: Instalar dependencias necesarias para Chrome
+    - name: Instalar dependencias necesarias para Chrome y Xvfb
       ansible.builtin.package:
         name:
           - libnss3
           - libxss1
           - fonts-liberation
           - wget
-          - x11-xserver-utils  # útil para X, aunque no usamos xhost
+          - xvfb
+          - x11-xserver-utils
           - apt-transport-https
           - ca-certificates
         state: present
@@ -39,19 +40,20 @@
       args:
         creates: /usr/bin/google-chrome
 
-    - name: Crear el archivo del servicio systemd para Chrome Kiosk
+    - name: Crear servicio systemd para Chrome Kiosk con Xvfb
       ansible.builtin.copy:
         dest: /etc/systemd/system/kiosk.service
         content: |
           [Unit]
-          Description=Google Chrome Kiosk
-          After=network.target display-manager.service
+          Description=Google Chrome Kiosk (headless Xvfb)
+          After=network.target
 
           [Service]
           User={{ kiosk_user }}
           Environment=DISPLAY={{ display }}
           WorkingDirectory=/home/{{ kiosk_user }}
-          ExecStart={{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
+          ExecStart=/usr/bin/Xvfb {{ display }} -screen 0 1920x1080x24 &
+                     {{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
           Restart=always
           TimeoutStartSec=300
           StandardOutput=null
