@@ -1,0 +1,13 @@
+---
+- name: Main play
+  hosts: all
+  become: true    # <-- Add this line here, at the PLAY level
+  gather_facts: true # Optional: often needed for roles
+
+  tasks:
+    - name: Include the role from the parent directory
+      ansible.builtin.include_role: # { name: "{{ playbook_dir | dirname }}" }
+        name: dmotte.webkiosk
+      vars: # noqa: var-naming[no-role-prefix]
+        ansible_become: true
+        webkiosk_url: https://isard.politecnicllevant.cat/login
