@@ -9,6 +9,7 @@
     kiosk_url: "https://isard.politecnicllevant.cat/login"
     display: ":0"
     chrome_path: "/usr/bin/google-chrome"
+    chrome_flags: "--kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --incognito"
 
   tasks:
 
@@ -17,6 +18,7 @@
         name: "{{ kiosk_user }}"
         state: present
         create_home: yes
+        shell: /bin/bash
 
     - name: Instalar dependencias necesarias para Chrome
       ansible.builtin.package:
@@ -25,20 +27,17 @@
           - libxss1
           - fonts-liberation
           - wget
-          - x11-xserver-utils  # Para xhost
+          - x11-xserver-utils  # útil para X, aunque no usamos xhost
+          - apt-transport-https
+          - ca-certificates
         state: present
 
     - name: Instalar Google Chrome si no está instalado
       ansible.builtin.shell: |
-        if ! command -v google-chrome >/dev/null 2>&1; then
-          wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-          dpkg -i /tmp/google-chrome.deb || apt-get -f install -y
-        fi
-
-    - name: Permitir al usuario del kiosk acceder al display
-      ansible.builtin.shell: "xhost +SI:localuser:{{ kiosk_user }}"
-      environment:
-        DISPLAY: "{{ display }}"
+        wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+        dpkg -i /tmp/google-chrome.deb || apt-get -f install -y
+      args:
+        creates: /usr/bin/google-chrome
 
     - name: Crear el archivo del servicio systemd para Chrome Kiosk
       ansible.builtin.copy:
@@ -51,15 +50,12 @@
           [Service]
           User={{ kiosk_user }}
           Environment=DISPLAY={{ display }}
-          ExecStart={{ chrome_path }} \
-            --kiosk \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-software-rasterizer \
-            --incognito \
-            {{ kiosk_url }}
+          WorkingDirectory=/home/{{ kiosk_user }}
+          ExecStart={{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
           Restart=always
           TimeoutStartSec=300
+          StandardOutput=null
+          StandardError=null
 
           [Install]
           WantedBy=multi-user.target
@@ -74,4 +70,5 @@
 
   handlers:
     - name: Recargar systemd
-      ansible.builtin.command: systemctl daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: yes
