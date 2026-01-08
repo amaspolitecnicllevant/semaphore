@@ -25,17 +25,16 @@
           - libxss1
           - fonts-liberation
           - wget
+          - x11-xserver-utils  # Para xhost
         state: present
 
-   - name: Instalar Google Chrome si no está instalado
-     ansible.builtin.shell: |
-       if ! command -v google-chrome >/dev/null 2>&1; then
-         wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-         dpkg -i /tmp/google-chrome.deb || apt-get -f install -y
-       fi
-     args:
-     warn: false
-
+    - name: Instalar Google Chrome si no está instalado
+      ansible.builtin.shell: |
+        if ! command -v google-chrome >/dev/null 2>&1; then
+          wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          dpkg -i /tmp/google-chrome.deb || apt-get -f install -y
+        fi
+      warn: false
 
     - name: Permitir al usuario del kiosk acceder al display
       ansible.builtin.shell: "xhost +SI:localuser:{{ kiosk_user }}"
