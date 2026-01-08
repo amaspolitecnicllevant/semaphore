@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk en Linux Mint 21.3
+- name: Configurar Firefox en modo Kiosk en Linux Mint 21.3 (pro)
   hosts: all
   become: true
   gather_facts: true
@@ -7,24 +7,16 @@
   vars:
     kiosk_user: kioskuser
     kiosk_url: "https://isard.politecnicllevant.cat/login"
-    display_physical: ":0"
-    display_virtual: ":99"
-    chrome_path: "/usr/bin/google-chrome"
-    chrome_flags: "--kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --incognito"
+    firefox_path: "/usr/bin/firefox"
+    firefox_profile: "/home/{{ kiosk_user }}/.firefox-kiosk"
+    kiosk_log: "/home/{{ kiosk_user }}/logs/kiosk.log"
 
   tasks:
 
     # -------------------------------
-    # Mostrar distribución detectada (debug)
+    # Crear usuario kioskuser si no existe
     # -------------------------------
-    - name: Mostrar distribución detectada
-      ansible.builtin.debug:
-        var: ansible_facts['distribution']
-
-    # -------------------------------
-    # Crear usuario Kiosk
-    # -------------------------------
-    - name: Crear usuario para Kiosk si no existe
+    - name: Crear usuario para Kiosk
       ansible.builtin.user:
         name: "{{ kiosk_user }}"
         state: present
@@ -32,30 +24,15 @@
         shell: /bin/bash
 
     # -------------------------------
-    # Instalar dependencias y Chrome
+    # Instalar Firefox
     # -------------------------------
-    - name: Instalar dependencias necesarias para Chrome y Xvfb
+    - name: Instalar Firefox
       ansible.builtin.package:
-        name:
-          - libnss3
-          - libxss1
-          - fonts-liberation
-          - wget
-          - xvfb
-          - x11-xserver-utils
-          - apt-transport-https
-          - ca-certificates
+        name: firefox
         state: present
 
-    - name: Instalar Google Chrome si no está instalado
-      ansible.builtin.shell: |
-        wget -q -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-        dpkg -i /tmp/google-chrome.deb || apt-get -f install -y
-      args:
-        creates: /usr/bin/google-chrome
-
     # -------------------------------
-    # Configurar login automático en LightDM (Linux Mint)
+    # Configurar login automático en LightDM
     # -------------------------------
     - name: Crear directorio de configuración de LightDM
       ansible.builtin.file:
@@ -77,74 +54,74 @@
         mode: '0644'
 
     # -------------------------------
-    # Detectar si hay Xorg en pantalla física
+    # Crear perfil dedicado de Firefox
     # -------------------------------
-    - name: Detectar si hay sesión gráfica activa en :0
-      ansible.builtin.shell: "pgrep -u {{ kiosk_user }} -f Xorg || true"
-      register: xorg_check
-      changed_when: false
+    - name: Crear directorio de perfil Firefox
+      ansible.builtin.file:
+        path: "{{ firefox_profile }}"
+        state: directory
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0700'
 
-    - name: Configurar DISPLAY y método de ejecución
-      ansible.builtin.set_fact:
-        kiosk_display: "{{ display_physical if xorg_check.stdout|length > 0 else display_virtual }}"
-        use_xvfb: "{{ True if xorg_check.stdout|length == 0 else False }}"
-
-    # -------------------------------
-    # Crear script de arranque
-    # -------------------------------
-    - name: Crear script de arranque de Chrome Kiosk
-      ansible.builtin.copy:
-        dest: /home/{{ kiosk_user }}/start-kiosk.sh
-        content: |
-          #!/bin/bash
-          export DISPLAY={{ kiosk_display }}
-
-          {% if use_xvfb %}
-          # Iniciar Xvfb si no está corriendo
-          if ! pgrep Xvfb > /dev/null; then
-              Xvfb $DISPLAY -screen 0 1920x1080x24 &
-              sleep 2
-          fi
-          {% else %}
-          # Permitir que el usuario acceda al display físico
-          xhost +SI:localuser:{{ kiosk_user }} || true
-          {% endif %}
-
-          # Ejecutar Chrome en modo kiosk
-          exec {{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
+    - name: Crear directorio de logs
+      ansible.builtin.file:
+        path: "/home/{{ kiosk_user }}/logs"
+        state: directory
         owner: "{{ kiosk_user }}"
         group: "{{ kiosk_user }}"
         mode: '0755'
 
     # -------------------------------
-    # Crear servicio systemd
+    # Crear script de arranque de Firefox Kiosk
     # -------------------------------
-    - name: Crear servicio systemd para Chrome Kiosk
+    - name: Crear script de arranque de Firefox Kiosk
       ansible.builtin.copy:
-        dest: /etc/systemd/system/kiosk.service
+        dest: /home/{{ kiosk_user }}/start-firefox-kiosk.sh
+        content: |
+          #!/bin/bash
+          export DISPLAY=:0
+
+          # Esperar a que Xorg esté listo
+          while ! xdpyinfo -display :0 >/dev/null 2>&1; do sleep 1; done
+
+          # Ejecutar Firefox en modo kiosk con perfil dedicado y log
+          exec {{ firefox_path }} --kiosk -profile {{ firefox_profile }} "{{ kiosk_url }}" >> {{ kiosk_log }} 2>&1
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0755'
+
+    # -------------------------------
+    # Crear servicio systemd para Firefox Kiosk
+    # -------------------------------
+    - name: Crear servicio systemd para Firefox Kiosk
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/firefox-kiosk.service
         content: |
           [Unit]
-          Description=Google Chrome Kiosk (Linux Mint)
-          After=network.target
+          Description=Firefox Kiosk (Linux Mint)
+          After=graphical.target
+          Requires=graphical.target
 
           [Service]
+          Type=simple
           User={{ kiosk_user }}
-          Environment=DISPLAY={{ kiosk_display }}
+          Environment=DISPLAY=:0
           WorkingDirectory=/home/{{ kiosk_user }}
-          ExecStart=/home/{{ kiosk_user }}/start-kiosk.sh
+          ExecStart=/home/{{ kiosk_user }}/start-firefox-kiosk.sh
           Restart=always
           TimeoutStartSec=300
-          StandardOutput=journal
-          StandardError=journal
+          StandardOutput=append:{{ kiosk_log }}
+          StandardError=append:{{ kiosk_log }}
 
           [Install]
           WantedBy=graphical.target
       notify:
         - Recargar systemd
 
-    - name: Habilitar y arrancar el servicio kiosk
+    - name: Habilitar y arrancar el servicio Firefox Kiosk
       ansible.builtin.systemd:
-        name: kiosk.service
+        name: firefox-kiosk.service
         enabled: true
         state: restarted
 
