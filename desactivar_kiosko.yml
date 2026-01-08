@@ -1,0 +1,38 @@
+---
+- name: Desactivar el modo Kiosk
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Detener el servicio kiosk
+      ansible.builtin.systemd:
+        name: kiosk.service
+        state: stopped
+        enabled: false  # Deshabilita el inicio automático
+
+    - name: Verificar que el servicio kiosk está detenido
+      ansible.builtin.systemd:
+        name: kiosk.service
+        state: stopped
+      register: kiosk_status
+
+    - name: Mostrar estado del servicio kiosk
+      ansible.builtin.debug:
+        msg: "Estado actual del servicio kiosk: {{ kiosk_status }}"
+
+    - name: (Opcional) Eliminar el usuario kioskuser
+      ansible.builtin.user:
+        name: kioskuser
+        state: absent
+        remove: yes  # elimina home y archivos
+      when: kiosk_status is defined  # solo si el servicio existía
+
+    - name: (Opcional) Eliminar el servicio kiosk
+      ansible.builtin.file:
+        path: /etc/systemd/system/kiosk.service
+        state: absent
+      when: kiosk_status is defined
+
+    - name: Recargar systemd para reflejar cambios
+      ansible.builtin.command: systemctl daemon-reload
