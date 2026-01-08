@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk (headless con Xvfb)
+- name: Configurar Google Chrome en modo Kiosk (pantalla física)
   hosts: all
   become: true
   gather_facts: true
@@ -7,7 +7,7 @@
   vars:
     kiosk_user: kioskuser
     kiosk_url: "https://isard.politecnicllevant.cat/login"
-    display: ":99"
+    display: ":0"
     chrome_path: "/usr/bin/google-chrome"
     chrome_flags: "--kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --incognito"
 
@@ -20,14 +20,13 @@
         create_home: yes
         shell: /bin/bash
 
-    - name: Instalar dependencias necesarias para Chrome y Xvfb
+    - name: Instalar dependencias necesarias para Chrome
       ansible.builtin.package:
         name:
           - libnss3
           - libxss1
           - fonts-liberation
           - wget
-          - xvfb
           - x11-xserver-utils
           - apt-transport-https
           - ca-certificates
@@ -40,27 +39,45 @@
       args:
         creates: /usr/bin/google-chrome
 
-    - name: Crear servicio systemd para Chrome Kiosk con Xvfb
+    - name: Permitir que el usuario kiosk acceda al display físico
+      ansible.builtin.shell: "xhost +SI:localuser:{{ kiosk_user }}"
+      environment:
+        DISPLAY: "{{ display }}"
+      ignore_errors: yes  # No fallar si se ejecuta remotamente y falla
+
+    - name: Crear script de arranque de Chrome Kiosk
+      ansible.builtin.copy:
+        dest: /home/{{ kiosk_user }}/start-kiosk.sh
+        content: |
+          #!/bin/bash
+          export DISPLAY={{ display }}
+
+          # Ejecutar Chrome en modo kiosk
+          exec {{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0755'
+
+    - name: Crear servicio systemd para Chrome Kiosk
       ansible.builtin.copy:
         dest: /etc/systemd/system/kiosk.service
         content: |
           [Unit]
-          Description=Google Chrome Kiosk (headless Xvfb)
-          After=network.target
+          Description=Google Chrome Kiosk (Pantalla física)
+          After=graphical.target
 
           [Service]
           User={{ kiosk_user }}
           Environment=DISPLAY={{ display }}
           WorkingDirectory=/home/{{ kiosk_user }}
-          ExecStart=/usr/bin/Xvfb {{ display }} -screen 0 1920x1080x24 &
-                     {{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
+          ExecStart=/home/{{ kiosk_user }}/start-kiosk.sh
           Restart=always
           TimeoutStartSec=300
           StandardOutput=null
           StandardError=null
 
           [Install]
-          WantedBy=multi-user.target
+          WantedBy=graphical.target
       notify:
         - Recargar systemd
 
