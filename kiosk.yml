@@ -15,6 +15,13 @@
   tasks:
 
     # -------------------------------
+    # Mostrar distribución detectada (para debug)
+    # -------------------------------
+    - name: Mostrar distribución detectada
+      ansible.builtin.debug:
+        var: ansible_facts['distribution']
+
+    # -------------------------------
     # Crear usuario Kiosk
     # -------------------------------
     - name: Crear usuario para Kiosk si no existe
@@ -57,7 +64,7 @@
           [Seat:*]
           autologin-user={{ kiosk_user }}
           autologin-user-timeout=0
-      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Configurar login automático en GDM (GNOME/Ubuntu)
       ansible.builtin.ini_file:
@@ -65,7 +72,7 @@
         section: daemon
         option: AutomaticLogin
         value: "{{ kiosk_user }}"
-      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+      when: ansible_facts['os_family'] == "Debian"
 
     - name: Habilitar AutomaticLogin en GDM
       ansible.builtin.ini_file:
@@ -73,7 +80,7 @@
         section: daemon
         option: AutomaticLoginEnable
         value: "true"
-      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+      when: ansible_facts['os_family'] == "Debian"
 
     # -------------------------------
     # Detectar si hay Xorg en pantalla física
