@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk (pantalla física)
+- name: Configurar Google Chrome en modo Kiosk (universal)
   hosts: all
   become: true
   gather_facts: true
@@ -7,7 +7,8 @@
   vars:
     kiosk_user: kioskuser
     kiosk_url: "https://isard.politecnicllevant.cat/login"
-    display: ":0"
+    display_physical: ":0"
+    display_virtual: ":99"
     chrome_path: "/usr/bin/google-chrome"
     chrome_flags: "--kiosk --no-sandbox --disable-gpu --disable-software-rasterizer --incognito"
 
@@ -20,13 +21,14 @@
         create_home: yes
         shell: /bin/bash
 
-    - name: Instalar dependencias necesarias para Chrome
+    - name: Instalar dependencias necesarias para Chrome y Xvfb
       ansible.builtin.package:
         name:
           - libnss3
           - libxss1
           - fonts-liberation
           - wget
+          - xvfb
           - x11-xserver-utils
           - apt-transport-https
           - ca-certificates
@@ -39,18 +41,33 @@
       args:
         creates: /usr/bin/google-chrome
 
-    - name: Permitir que el usuario kiosk acceda al display físico
-      ansible.builtin.shell: "xhost +SI:localuser:{{ kiosk_user }}"
-      environment:
-        DISPLAY: "{{ display }}"
-      ignore_errors: yes  # No fallar si se ejecuta remotamente y falla
+    - name: Detectar si hay sesión gráfica activa en :0
+      ansible.builtin.shell: "pgrep -u {{ kiosk_user }} -f Xorg || true"
+      register: xorg_check
+      changed_when: false
+
+    - name: Configurar DISPLAY y método de ejecución
+      ansible.builtin.set_fact:
+        kiosk_display: "{{ display_physical if xorg_check.stdout|length > 0 else display_virtual }}"
+        use_xvfb: "{{ True if xorg_check.stdout|length == 0 else False }}"
 
     - name: Crear script de arranque de Chrome Kiosk
       ansible.builtin.copy:
         dest: /home/{{ kiosk_user }}/start-kiosk.sh
         content: |
           #!/bin/bash
-          export DISPLAY={{ display }}
+          export DISPLAY={{ kiosk_display }}
+
+          {% if use_xvfb %}
+          # Iniciar Xvfb si no está corriendo
+          if ! pgrep Xvfb > /dev/null; then
+              Xvfb $DISPLAY -screen 0 1920x1080x24 &
+              sleep 2
+          fi
+          {% else %}
+          # Permitir que el usuario acceda al display físico
+          xhost +SI:localuser:{{ kiosk_user }} || true
+          {% endif %}
 
           # Ejecutar Chrome en modo kiosk
           exec {{ chrome_path }} {{ chrome_flags }} {{ kiosk_url }}
@@ -63,12 +80,12 @@
         dest: /etc/systemd/system/kiosk.service
         content: |
           [Unit]
-          Description=Google Chrome Kiosk (Pantalla física)
-          After=graphical.target
+          Description=Google Chrome Kiosk (Universal)
+          After=network.target
 
           [Service]
           User={{ kiosk_user }}
-          Environment=DISPLAY={{ display }}
+          Environment=DISPLAY={{ kiosk_display }}
           WorkingDirectory=/home/{{ kiosk_user }}
           ExecStart=/home/{{ kiosk_user }}/start-kiosk.sh
           Restart=always
