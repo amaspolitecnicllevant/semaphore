@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk (universal)
+- name: Configurar Google Chrome en modo Kiosk (pantalla física o Xvfb) con login automático
   hosts: all
   become: true
   gather_facts: true
@@ -14,6 +14,9 @@
 
   tasks:
 
+    # -------------------------------
+    # Crear usuario Kiosk
+    # -------------------------------
     - name: Crear usuario para Kiosk si no existe
       ansible.builtin.user:
         name: "{{ kiosk_user }}"
@@ -21,6 +24,9 @@
         create_home: yes
         shell: /bin/bash
 
+    # -------------------------------
+    # Instalar dependencias y Chrome
+    # -------------------------------
     - name: Instalar dependencias necesarias para Chrome y Xvfb
       ansible.builtin.package:
         name:
@@ -41,6 +47,37 @@
       args:
         creates: /usr/bin/google-chrome
 
+    # -------------------------------
+    # Configurar login automático
+    # -------------------------------
+    - name: Configurar login automático en LightDM
+      ansible.builtin.blockinfile:
+        path: /etc/lightdm/lightdm.conf
+        block: |
+          [Seat:*]
+          autologin-user={{ kiosk_user }}
+          autologin-user-timeout=0
+      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+
+    - name: Configurar login automático en GDM (GNOME/Ubuntu)
+      ansible.builtin.ini_file:
+        path: /etc/gdm3/custom.conf
+        section: daemon
+        option: AutomaticLogin
+        value: "{{ kiosk_user }}"
+      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+
+    - name: Habilitar AutomaticLogin en GDM
+      ansible.builtin.ini_file:
+        path: /etc/gdm3/custom.conf
+        section: daemon
+        option: AutomaticLoginEnable
+        value: "true"
+      when: ansible_facts['distribution'] in ['Ubuntu', 'Debian']
+
+    # -------------------------------
+    # Detectar si hay Xorg en pantalla física
+    # -------------------------------
     - name: Detectar si hay sesión gráfica activa en :0
       ansible.builtin.shell: "pgrep -u {{ kiosk_user }} -f Xorg || true"
       register: xorg_check
@@ -51,6 +88,9 @@
         kiosk_display: "{{ display_physical if xorg_check.stdout|length > 0 else display_virtual }}"
         use_xvfb: "{{ True if xorg_check.stdout|length == 0 else False }}"
 
+    # -------------------------------
+    # Crear script de arranque
+    # -------------------------------
     - name: Crear script de arranque de Chrome Kiosk
       ansible.builtin.copy:
         dest: /home/{{ kiosk_user }}/start-kiosk.sh
@@ -75,6 +115,9 @@
         group: "{{ kiosk_user }}"
         mode: '0755'
 
+    # -------------------------------
+    # Crear servicio systemd
+    # -------------------------------
     - name: Crear servicio systemd para Chrome Kiosk
       ansible.builtin.copy:
         dest: /etc/systemd/system/kiosk.service
@@ -90,8 +133,8 @@
           ExecStart=/home/{{ kiosk_user }}/start-kiosk.sh
           Restart=always
           TimeoutStartSec=300
-          StandardOutput=null
-          StandardError=null
+          StandardOutput=journal
+          StandardError=journal
 
           [Install]
           WantedBy=graphical.target
