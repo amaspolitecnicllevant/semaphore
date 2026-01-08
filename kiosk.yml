@@ -1,5 +1,5 @@
 ---
-- name: Configurar Google Chrome en modo Kiosk (pantalla física o Xvfb) con login automático
+- name: Configurar Google Chrome en modo Kiosk con login automático seguro
   hosts: all
   become: true
   gather_facts: true
@@ -15,7 +15,7 @@
   tasks:
 
     # -------------------------------
-    # Mostrar distribución detectada (para debug)
+    # Mostrar distribución detectada (debug)
     # -------------------------------
     - name: Mostrar distribución detectada
       ansible.builtin.debug:
@@ -55,7 +55,20 @@
         creates: /usr/bin/google-chrome
 
     # -------------------------------
-    # Configurar login automático
+    # Comprobar gestores de sesión
+    # -------------------------------
+    - name: Comprobar si existe LightDM
+      ansible.builtin.stat:
+        path: /etc/lightdm/lightdm.conf
+      register: lightdm_conf
+
+    - name: Comprobar si existe GDM
+      ansible.builtin.stat:
+        path: /etc/gdm3/custom.conf
+      register: gdm_conf
+
+    # -------------------------------
+    # Configurar login automático en LightDM si existe
     # -------------------------------
     - name: Configurar login automático en LightDM
       ansible.builtin.blockinfile:
@@ -64,15 +77,18 @@
           [Seat:*]
           autologin-user={{ kiosk_user }}
           autologin-user-timeout=0
-      when: ansible_facts['os_family'] == "Debian"
+      when: lightdm_conf.stat.exists
 
-    - name: Configurar login automático en GDM (GNOME/Ubuntu)
+    # -------------------------------
+    # Configurar login automático en GDM si existe
+    # -------------------------------
+    - name: Configurar login automático en GDM
       ansible.builtin.ini_file:
         path: /etc/gdm3/custom.conf
         section: daemon
         option: AutomaticLogin
         value: "{{ kiosk_user }}"
-      when: ansible_facts['os_family'] == "Debian"
+      when: gdm_conf.stat.exists
 
     - name: Habilitar AutomaticLogin en GDM
       ansible.builtin.ini_file:
@@ -80,7 +96,7 @@
         section: daemon
         option: AutomaticLoginEnable
         value: "true"
-      when: ansible_facts['os_family'] == "Debian"
+      when: gdm_conf.stat.exists
 
     # -------------------------------
     # Detectar si hay Xorg en pantalla física
