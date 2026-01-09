@@ -1,32 +1,51 @@
-#!/bin/bash
+---
+- name: Desactivar modo kiosko Firefox
+  hosts: all
+  become: true
+  gather_facts: false
 
-KIOSK_USER="kioskuser"
-AUTOSTART_FILE="/home/$KIOSK_USER/.config/autostart/firefox-kiosk.desktop"
-XMODMAP_FILE="/home/$KIOSK_USER/.Xmodmap"
+  vars:
+    kiosk_user: kioskuser
+    autostart_file: "/home/kioskuser/.config/autostart/firefox-kiosk.desktop"
+    xmodmap_file: "/home/kioskuser/.Xmodmap"
 
-echo "⛔ Desactivando modo kiosko..."
+  tasks:
 
-# --------------------------------------
-# Cerrar Firefox si está abierto
-# --------------------------------------
-pkill -u "$KIOSK_USER" firefox 2>/dev/null
+    # --------------------------------------
+    # Cerrar Firefox si está ejecutándose
+    # --------------------------------------
+    - name: Cerrar Firefox del usuario kiosk
+      ansible.builtin.shell: |
+        pkill -u {{ kiosk_user }} firefox || true
 
-# --------------------------------------
-# Restaurar teclado (quitar xmodmap)
-# --------------------------------------
-if [ -f "$XMODMAP_FILE" ]; then
-    su - "$KIOSK_USER" -c "xmodmap -e 'clear all'"
-fi
+    # --------------------------------------
+    # Restaurar teclado (eliminar xmodmap)
+    # --------------------------------------
+    - name: Restaurar mapa de teclado
+      ansible.builtin.shell: |
+        xmodmap -e "clear all"
+      become_user: "{{ kiosk_user }}"
+      ignore_errors: true
 
-# --------------------------------------
-# Eliminar autostart
-# --------------------------------------
-if [ -f "$AUTOSTART_FILE" ]; then
-    rm -f "$AUTOSTART_FILE"
-fi
+    # --------------------------------------
+    # Eliminar archivo Xmodmap
+    # --------------------------------------
+    - name: Eliminar archivo Xmodmap
+      ansible.builtin.file:
+        path: "{{ xmodmap_file }}"
+        state: absent
 
-# --------------------------------------
-# Mensaje final
-# --------------------------------------
-echo "✅ Modo kiosko desactivado"
-echo "ℹ️ Reinicia la sesión o el sistema para aplicar completamente los cambios"
+    # --------------------------------------
+    # Eliminar autostart del kiosko
+    # --------------------------------------
+    - name: Eliminar autostart Firefox Kiosk
+      ansible.builtin.file:
+        path: "{{ autostart_file }}"
+        state: absent
+
+    # --------------------------------------
+    # Mensaje final
+    # --------------------------------------
+    - name: Aviso final
+      ansible.builtin.debug:
+        msg: "Modo kiosko desactivado. Reinicia el sistema para aplicar los cambios."
