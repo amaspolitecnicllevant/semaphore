@@ -1,5 +1,5 @@
 ---
-- name: Configurar Firefox en modo Kiosk en Linux Mint 21.3 (pro)
+- name: Configurar Firefox en modo Kiosk en Linux Mint 21.3
   hosts: all
   become: true
   gather_facts: true
@@ -32,6 +32,25 @@
         state: present
 
     # -------------------------------
+    # Crear perfil dedicado de Firefox
+    # -------------------------------
+    - name: Crear directorio de perfil Firefox
+      ansible.builtin.file:
+        path: "{{ firefox_profile }}"
+        state: directory
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0700'
+
+    - name: Crear directorio de logs
+      ansible.builtin.file:
+        path: "/home/{{ kiosk_user }}/logs"
+        state: directory
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0755'
+
+    # -------------------------------
     # Configurar login automático en LightDM
     # -------------------------------
     - name: Crear directorio de configuración de LightDM
@@ -54,78 +73,16 @@
         mode: '0644'
 
     # -------------------------------
-    # Crear perfil dedicado de Firefox
+    # Crear script de arranque en .xprofile
     # -------------------------------
-    - name: Crear directorio de perfil Firefox
-      ansible.builtin.file:
-        path: "{{ firefox_profile }}"
-        state: directory
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0700'
-
-    - name: Crear directorio de logs
-      ansible.builtin.file:
-        path: "/home/{{ kiosk_user }}/logs"
-        state: directory
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0755'
-
-    # -------------------------------
-    # Crear script de arranque de Firefox Kiosk
-    # -------------------------------
-    - name: Crear script de arranque de Firefox Kiosk
+    - name: Crear .xprofile para lanzar Firefox en modo kiosk
       ansible.builtin.copy:
-        dest: /home/{{ kiosk_user }}/start-firefox-kiosk.sh
+        dest: "/home/{{ kiosk_user }}/.xprofile"
         content: |
           #!/bin/bash
           export DISPLAY=:0
-
-          # Esperar a que Xorg esté listo
-          while ! xdpyinfo -display :0 >/dev/null 2>&1; do sleep 1; done
-
-          # Ejecutar Firefox en modo kiosk con perfil dedicado y log
+          mkdir -p /home/{{ kiosk_user }}/logs
           exec {{ firefox_path }} --kiosk -profile {{ firefox_profile }} "{{ kiosk_url }}" >> {{ kiosk_log }} 2>&1
         owner: "{{ kiosk_user }}"
         group: "{{ kiosk_user }}"
         mode: '0755'
-
-    # -------------------------------
-    # Crear servicio systemd para Firefox Kiosk
-    # -------------------------------
-    - name: Crear servicio systemd para Firefox Kiosk
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/firefox-kiosk.service
-        content: |
-          [Unit]
-          Description=Firefox Kiosk (Linux Mint)
-          After=graphical.target
-          Requires=graphical.target
-
-          [Service]
-          Type=simple
-          User={{ kiosk_user }}
-          Environment=DISPLAY=:0
-          WorkingDirectory=/home/{{ kiosk_user }}
-          ExecStart=/home/{{ kiosk_user }}/start-firefox-kiosk.sh
-          Restart=always
-          TimeoutStartSec=300
-          StandardOutput=append:{{ kiosk_log }}
-          StandardError=append:{{ kiosk_log }}
-
-          [Install]
-          WantedBy=graphical.target
-      notify:
-        - Recargar systemd
-
-    - name: Habilitar y arrancar el servicio Firefox Kiosk
-      ansible.builtin.systemd:
-        name: firefox-kiosk.service
-        enabled: true
-        state: restarted
-
-  handlers:
-    - name: Recargar systemd
-      ansible.builtin.systemd:
-        daemon_reload: yes
