@@ -1,5 +1,5 @@
 ---
-- name: Firefox Kiosk definitivo para Linux Mint 21.3
+- name: Firefox Kiosk definitivo para Linux Mint 21.3 (con bloqueo de teclas)
   hosts: all
   become: true
   gather_facts: true
@@ -47,7 +47,32 @@
         mode: '0644'
 
     # --------------------------------------------------
-    # Script KIOSK (FIABLE)
+    # Archivo Xmodmap (bloqueo de teclas)
+    # --------------------------------------------------
+    - name: Crear archivo Xmodmap para bloqueo de teclas
+      ansible.builtin.copy:
+        dest: /home/{{ kiosk_user }}/.Xmodmap
+        content: |
+          ! Bloquear Alt
+          keycode 64 =
+          keycode 108 =
+
+          ! Bloquear Super / Windows
+          keycode 133 =
+          keycode 134 =
+
+          ! Bloquear Ctrl
+          keycode 37 =
+          keycode 105 =
+
+          ! Bloquear Escape
+          keycode 9 =
+        owner: "{{ kiosk_user }}"
+        group: "{{ kiosk_user }}"
+        mode: '0644'
+
+    # --------------------------------------------------
+    # Script KIOSK (FIABLE + bloqueo teclas)
     # --------------------------------------------------
     - name: Crear script de kiosko Firefox
       ansible.builtin.copy:
@@ -63,7 +88,12 @@
               sleep 1
           done
 
-          exec firefox --kiosk "{{ kiosk_url }}"
+          # Aplicar bloqueo de teclas
+          if [ -f /home/{{ kiosk_user }}/.Xmodmap ]; then
+              xmodmap /home/{{ kiosk_user }}/.Xmodmap
+          fi
+
+          firefox --kiosk "{{ kiosk_url }}"
         owner: "{{ kiosk_user }}"
         group: "{{ kiosk_user }}"
         mode: '0755'
@@ -91,4 +121,3 @@
         owner: "{{ kiosk_user }}"
         group: "{{ kiosk_user }}"
         mode: '0644'
-     
