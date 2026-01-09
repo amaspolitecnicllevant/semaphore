@@ -1,5 +1,5 @@
 ---
-- name: Desactivar modo kiosko Firefox
+- name: Desactivar modo kiosko Firefox (seguro)
   hosts: all
   become: true
   gather_facts: false
@@ -19,16 +19,7 @@
         pkill -u {{ kiosk_user }} firefox || true
 
     # --------------------------------------
-    # Restaurar teclado (eliminar xmodmap)
-    # --------------------------------------
-    - name: Restaurar mapa de teclado
-      ansible.builtin.shell: |
-        xmodmap -e "clear all"
-      become_user: "{{ kiosk_user }}"
-      ignore_errors: true
-
-    # --------------------------------------
-    # Eliminar archivo Xmodmap
+    # Eliminar archivo Xmodmap (restaura teclado tras reinicio)
     # --------------------------------------
     - name: Eliminar archivo Xmodmap
       ansible.builtin.file:
@@ -48,4 +39,6 @@
     # --------------------------------------
     - name: Aviso final
       ansible.builtin.debug:
-        msg: "Modo kiosko desactivado. Reinicia el sistema para aplicar los cambios."
+        msg: >
+          Modo kiosko desactivado.
+          Reinicia el sistema para restaurar completamente el teclado y el escritorio.
