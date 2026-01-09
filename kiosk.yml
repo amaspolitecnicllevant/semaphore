@@ -29,7 +29,7 @@
         state: present
 
     # --------------------------------------------------
-    # LightDM: LOGIN MANUAL (desactivar autologin)
+    # LightDM: LOGIN MANUAL
     # --------------------------------------------------
     - name: Crear directorio LightDM
       ansible.builtin.file:
@@ -37,17 +37,10 @@
         state: directory
         mode: '0755'
 
-    - name: Eliminar archivo de autologin residual
+    - name: Asegurar que no hay autologin para kioskuser
       ansible.builtin.file:
         path: /etc/lightdm/lightdm.conf.d/50-autologin.conf
         state: absent
-
-    - name: Eliminar línea autologin-user en lightdm.conf
-      ansible.builtin.lineinfile:
-        path: /etc/lightdm/lightdm.conf
-        regexp: '^autologin-user='
-        state: absent
-        backrefs: yes
 
     # --------------------------------------------------
     # Archivo Xmodmap (bloqueo de teclas)
