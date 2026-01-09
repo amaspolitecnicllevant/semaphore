@@ -1,119 +1,53 @@
 ---
-- name: Firefox Kiosk definitivo para Linux Mint 21.3 (con bloqueo de teclas y login manual)
+- name: Desactivar modo kiosko Firefox (seguro y completo)
   hosts: all
   become: true
-  gather_facts: true
+  gather_facts: false
 
   vars:
     kiosk_user: kioskuser
-    kiosk_url: "https://isard.politecnicllevant.cat/login"
+    autostart_file: "/home/{{ kiosk_user }}/.config/autostart/firefox-kiosk.desktop"
+    xmodmap_file: "/home/{{ kiosk_user }}/.Xmodmap"
+    kiosk_script: "/home/{{ kiosk_user }}/kiosk.sh"
 
   tasks:
 
-    # --------------------------------------------------
-    # Usuario kiosk
-    # --------------------------------------------------
-    - name: Crear usuario kioskuser
-      ansible.builtin.user:
-        name: "{{ kiosk_user }}"
-        create_home: yes
-        shell: /bin/bash
-        state: present
+    # --------------------------------------
+    # Cerrar Firefox si está ejecutándose
+    # --------------------------------------
+    - name: Cerrar Firefox del usuario kiosk
+      ansible.builtin.shell: |
+        pkill -u {{ kiosk_user }} firefox || true
 
-    # --------------------------------------------------
-    # Firefox
-    # --------------------------------------------------
-    - name: Instalar Firefox
-      ansible.builtin.package:
-        name: firefox
-        state: present
-
-    # --------------------------------------------------
-    # LightDM: LOGIN MANUAL
-    # --------------------------------------------------
-    - name: Crear directorio LightDM
+    # --------------------------------------
+    # Eliminar bloqueo de teclas (se restaura tras reinicio)
+    # --------------------------------------
+    - name: Eliminar archivo Xmodmap
       ansible.builtin.file:
-        path: /etc/lightdm/lightdm.conf.d
-        state: directory
-        mode: '0755'
-
-    - name: Asegurar que no hay autologin para kioskuser
-      ansible.builtin.file:
-        path: /etc/lightdm/lightdm.conf.d/50-autologin.conf
+        path: "{{ xmodmap_file }}"
         state: absent
 
-    # --------------------------------------------------
-    # Archivo Xmodmap (bloqueo de teclas)
-    # --------------------------------------------------
-    - name: Crear archivo Xmodmap para bloqueo de teclas
-      ansible.builtin.copy:
-        dest: /home/{{ kiosk_user }}/.Xmodmap
-        content: |
-          ! Bloquear Alt
-          keycode 64 =
-          keycode 108 =
-
-          ! Bloquear Super / Windows
-          keycode 133 =
-          keycode 134 =
-
-          ! Bloquear Ctrl
-          keycode 37 =
-          keycode 105 =
-
-          ! Bloquear Escape
-          keycode 9 =
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0644'
-
-    # --------------------------------------------------
-    # Script KIOSK (FIABLE + bloqueo teclas)
-    # --------------------------------------------------
-    - name: Crear script de kiosko Firefox
-      ansible.builtin.copy:
-        dest: /home/{{ kiosk_user }}/kiosk.sh
-        content: |
-          #!/bin/bash
-
-          export DISPLAY=:0
-          export XAUTHORITY=/home/{{ kiosk_user }}/.Xauthority
-
-          # Esperar a que X esté listo
-          while ! xdpyinfo -display :0 >/dev/null 2>&1; do
-              sleep 1
-          done
-
-          # Aplicar bloqueo de teclas
-          if [ -f /home/{{ kiosk_user }}/.Xmodmap ]; then
-              xmodmap /home/{{ kiosk_user }}/.Xmodmap
-          fi
-
-          firefox --kiosk "{{ kiosk_url }}"
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0755'
-
-    # --------------------------------------------------
-    # AUTOSTART Cinnamon (Firefox Kiosk al iniciar sesión)
-    # --------------------------------------------------
-    - name: Crear directorio autostart
+    # --------------------------------------
+    # Eliminar script de kiosko
+    # --------------------------------------
+    - name: Eliminar script kiosk.sh
       ansible.builtin.file:
-        path: /home/{{ kiosk_user }}/.config/autostart
-        state: directory
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0755'
+        path: "{{ kiosk_script }}"
+        state: absent
 
-    - name: Crear autostart Firefox Kiosk
-      ansible.builtin.copy:
-        dest: /home/{{ kiosk_user }}/.config/autostart/firefox-kiosk.desktop
-        content: |
-          [Desktop Entry]
-          Type=Application
-          Name=Firefox Kiosk
-          Exec=/home/{{ kiosk_user }}/kiosk.sh
-          X-GNOME-Autostart-enabled=true
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0644'
+    # --------------------------------------
+    # Eliminar autostart del kiosko
+    # --------------------------------------
+    - name: Eliminar autostart Firefox Kiosk
+      ansible.builtin.file:
+        path: "{{ autostart_file }}"
+        state: absent
+
+    # --------------------------------------
+    # Mensaje final
+    # --------------------------------------
+    - name: Aviso final
+      ansible.builtin.debug:
+        msg: >
+          Modo kiosko y bloqueo de teclas desactivados.
+          Reinicia el sistema para restaurar completamente el teclado y el escritorio.
