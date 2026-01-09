@@ -1,88 +1,13 @@
----
-- name: Configurar Firefox en modo Kiosk en Linux Mint 21.3
-  hosts: all
-  become: true
-  gather_facts: true
+#!/bin/bash
 
-  vars:
-    kiosk_user: kioskuser
-    kiosk_url: "https://isard.politecnicllevant.cat/login"
-    firefox_path: "/usr/bin/firefox"
-    firefox_profile: "/home/{{ kiosk_user }}/.firefox-kiosk"
-    kiosk_log: "/home/{{ kiosk_user }}/logs/kiosk.log"
+# Asegurar entorno gráfico
+export DISPLAY=:0
+export XAUTHORITY=/home/kioskuser/.Xauthority
 
-  tasks:
+# Esperar a que la sesión gráfica esté lista
+while ! xdpyinfo -display :0 >/dev/null 2>&1; do
+    sleep 1
+done
 
-    # -------------------------------
-    # Crear usuario kioskuser si no existe
-    # -------------------------------
-    - name: Crear usuario para Kiosk
-      ansible.builtin.user:
-        name: "{{ kiosk_user }}"
-        state: present
-        create_home: yes
-        shell: /bin/bash
-
-    # -------------------------------
-    # Instalar Firefox
-    # -------------------------------
-    - name: Instalar Firefox
-      ansible.builtin.package:
-        name: firefox
-        state: present
-
-    # -------------------------------
-    # Crear perfil dedicado de Firefox
-    # -------------------------------
-    - name: Crear directorio de perfil Firefox
-      ansible.builtin.file:
-        path: "{{ firefox_profile }}"
-        state: directory
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0700'
-
-    - name: Crear directorio de logs
-      ansible.builtin.file:
-        path: "/home/{{ kiosk_user }}/logs"
-        state: directory
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0755'
-
-    # -------------------------------
-    # Configurar login automático en LightDM
-    # -------------------------------
-    - name: Crear directorio de configuración de LightDM
-      ansible.builtin.file:
-        path: /etc/lightdm/lightdm.conf.d
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
-
-    - name: Configurar login automático para kioskuser
-      ansible.builtin.copy:
-        dest: /etc/lightdm/lightdm.conf.d/50-autologin.conf
-        content: |
-          [Seat:*]
-          autologin-user={{ kiosk_user }}
-          autologin-user-timeout=0
-        owner: root
-        group: root
-        mode: '0644'
-
-    # -------------------------------
-    # Crear script de arranque en .xprofile
-    # -------------------------------
-    - name: Crear .xprofile para lanzar Firefox en modo kiosk
-      ansible.builtin.copy:
-        dest: "/home/{{ kiosk_user }}/.xprofile"
-        content: |
-          #!/bin/bash
-          export DISPLAY=:0
-          mkdir -p /home/{{ kiosk_user }}/logs
-          exec {{ firefox_path }} --kiosk -profile {{ firefox_profile }} "{{ kiosk_url }}" >> {{ kiosk_log }} 2>&1
-        owner: "{{ kiosk_user }}"
-        group: "{{ kiosk_user }}"
-        mode: '0755'
+# Lanzar Firefox en modo kiosko
+exec firefox --kiosk "https://isard.politecnicllevant.cat/login"
