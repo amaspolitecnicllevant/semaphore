@@ -1,38 +1,32 @@
----
-- name: Desactivar el modo Kiosk
-  hosts: all
-  become: true
-  gather_facts: true
+#!/bin/bash
 
-  tasks:
-    - name: Detener el servicio kiosk
-      ansible.builtin.systemd:
-        name: kiosk.service
-        state: stopped
-        enabled: false  # Deshabilita el inicio automático
+KIOSK_USER="kioskuser"
+AUTOSTART_FILE="/home/$KIOSK_USER/.config/autostart/firefox-kiosk.desktop"
+XMODMAP_FILE="/home/$KIOSK_USER/.Xmodmap"
 
-    - name: Verificar que el servicio kiosk está detenido
-      ansible.builtin.systemd:
-        name: kiosk.service
-        state: stopped
-      register: kiosk_status
+echo "⛔ Desactivando modo kiosko..."
 
-    - name: Mostrar estado del servicio kiosk
-      ansible.builtin.debug:
-        msg: "Estado actual del servicio kiosk: {{ kiosk_status }}"
+# --------------------------------------
+# Cerrar Firefox si está abierto
+# --------------------------------------
+pkill -u "$KIOSK_USER" firefox 2>/dev/null
 
-    - name: (Opcional) Eliminar el usuario kioskuser
-      ansible.builtin.user:
-        name: kioskuser
-        state: absent
-        remove: yes  # elimina home y archivos
-      when: kiosk_status is defined  # solo si el servicio existía
+# --------------------------------------
+# Restaurar teclado (quitar xmodmap)
+# --------------------------------------
+if [ -f "$XMODMAP_FILE" ]; then
+    su - "$KIOSK_USER" -c "xmodmap -e 'clear all'"
+fi
 
-    - name: (Opcional) Eliminar el servicio kiosk
-      ansible.builtin.file:
-        path: /etc/systemd/system/kiosk.service
-        state: absent
-      when: kiosk_status is defined
+# --------------------------------------
+# Eliminar autostart
+# --------------------------------------
+if [ -f "$AUTOSTART_FILE" ]; then
+    rm -f "$AUTOSTART_FILE"
+fi
 
-    - name: Recargar systemd para reflejar cambios
-      ansible.builtin.command: systemctl daemon-reload
+# --------------------------------------
+# Mensaje final
+# --------------------------------------
+echo "✅ Modo kiosko desactivado"
+echo "ℹ️ Reinicia la sesión o el sistema para aplicar completamente los cambios"
